@@ -1,0 +1,6 @@
+{
+  "features": {
+    "streaming": true,
+    "vision": false
+  }
+}

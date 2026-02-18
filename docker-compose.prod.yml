@@ -1,0 +1,59 @@
+# ============================================
+# m006: Server-ментор — Docker Compose (Production)
+# ============================================
+# Используется на сервере для деплоя
+# Образ берётся из ghcr.io
+# ============================================
+
+services:
+  m006:
+    image: ghcr.io/neuraservice/neura-m006-server-mentor:latest
+    container_name: neura-m006
+    ports:
+      - "3066:3066"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - MODULE_ID=m006
+      - PORT=3066
+      - DATA_PATH=/app/data
+      - RUNTIME_CONFIG_PATH=/app/config/runtime.json
+    volumes:
+      # Persistent data for conversations
+      - m006-data:/app/data
+      # Runtime config
+      - ./config/runtime.json:/app/config/runtime.json:ro
+      # Логи вне контейнера
+      - ./logs:/app/logs
+    networks:
+      - neura-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3066/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  m006-data:
+    name: neura-m006-data
+
+networks:
+  neura-network:
+    name: neura-network
+    external: true

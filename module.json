@@ -1,0 +1,42 @@
+{
+  "id": "m006",
+  "name": "Server-ментор",
+  "version": "1.0.0",
+  "description": "AI-ассистент для администрирования VPS серверов. SSE-streaming ответов, детализированный статус-бар с прогрессом, поддержка бесед, истории, экспорта в Markdown. Prompt из Dashboard OpenAI.",
+  "author": "NeurA Team",
+  "repository": "https://github.com/NeurAservice/neura-m006-server-mentor",
+  "port": "3066",
+  "healthcheck": "/health",
+  "dependencies": {
+    "core": {
+      "identity": true,
+      "session": true,
+      "billing": true
+    },
+    "external": {
+      "openai": {
+        "type": "responses",
+        "streaming": true,
+        "vision": false,
+        "prompt_from_dashboard": true
+      }
+    }
+  },
+  "config": {
+    "runtime": {
+      "description": "prompt.version обновляется без пересборки контейнера",
+      "source": "/app/config/runtime.json"
+    },
+    "storage": {
+      "type": "file",
+      "ttl_days": 7,
+      "cleanup_schedule": "0 0 * * *"
+    }
+  },
+  "features": [
+    "chat",
+    "conversation-history",
+    "conversation-list",
+    "markdown-export"
+  ]
+}

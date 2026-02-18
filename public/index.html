@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Server-ментор — AI-ассистент администрирования VPS</title>
+  <link rel="stylesheet" href="/public/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/nginx.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+</head>
+<body>
+  <!-- ========================================= -->
+  <!-- Sidebar: история бесед -->
+  <!-- ========================================= -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-area">
+        <span class="logo-icon">⌘</span>
+        <span class="logo-text">Server-ментор</span>
+      </div>
+      <button id="btn-new-chat" class="btn-new-chat" title="Новая беседа">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </div>
+    <div class="sidebar-search">
+      <input type="text" id="search-conversations" placeholder="Поиск бесед..." />
+    </div>
+    <div id="conversations-list" class="conversations-list">
+      <!-- Список заполняется из JS -->
+    </div>
+    <div class="sidebar-footer">
+      <button id="btn-toggle-sidebar" class="btn-toggle-sidebar" title="Свернуть">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ========================================= -->
+  <!-- Main Chat Area -->
+  <!-- ========================================= -->
+  <main id="main-area" class="main-area">
+    <!-- Header -->
+    <header class="chat-header">
+      <div class="header-left">
+        <button id="btn-open-sidebar" class="btn-icon btn-open-sidebar hidden" title="Открыть панель">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <h1 class="header-title">Server-ментор</h1>
+      </div>
+      <div class="header-right">
+        <button id="btn-download" class="btn-icon" title="Скачать беседу">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <!-- Balance widget -->
+        <div class="balance-widget">
+          <button id="btn-balance" class="btn-icon btn-balance" title="Баланс">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            <span id="balance-badge" class="balance-badge hidden"></span>
+          </button>
+          <div id="balance-popover" class="balance-popover hidden">
+            <div class="balance-popover-header">
+              <span>Баланс</span>
+              <button id="btn-close-balance" class="btn-close-popover" title="Закрыть">&times;</button>
+            </div>
+            <div class="balance-popover-body">
+              <div id="balance-loading" class="balance-loading">
+                <div class="spinner-small"></div>
+                <span>Загрузка...</span>
+              </div>
+              <div id="balance-content" class="balance-content hidden">
+                <div class="balance-amount">
+                  <span id="balance-value">—</span>
+                  <span id="balance-currency" class="balance-currency"></span>
+                </div>
+                <div class="balance-actions">
+                  <button id="btn-refresh-balance" class="btn-secondary-sm" title="Обновить">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Обновить
+                  </button>
+                  <a id="btn-topup" href="#" target="_blank" class="btn-primary-sm hidden">Пополнить</a>
+                </div>
+              </div>
+              <div id="balance-error" class="balance-error hidden">
+                <span>Ошибка загрузки баланса</span>
+                <button id="btn-retry-balance" class="btn-secondary-sm">Повторить</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Chat Messages -->
+    <div id="chat-messages" class="chat-messages">
+      <!-- Welcome screen (показывается по умолчанию) -->
+      <div id="welcome-screen" class="welcome-screen">
+        <div class="welcome-icon">⌘</div>
+        <h2 class="welcome-title">Server-ментор</h2>
+        <p class="welcome-subtitle">AI-ассистент для администрирования VPS и серверов</p>
+        <div class="welcome-examples">
+          <button class="example-btn" data-prompt="Как настроить Nginx reverse proxy для Node.js приложения?">
+            <span class="example-icon">🔧</span>
+            <span>Настройка Nginx reverse proxy</span>
+          </button>
+          <button class="example-btn" data-prompt="Настрой firewall (UFW) для веб-сервера: HTTP, HTTPS и SSH">
+            <span class="example-icon">🛡️</span>
+            <span>Настройка UFW firewall</span>
+          </button>
+          <button class="example-btn" data-prompt="Как правильно настроить SSL через Let's Encrypt с Certbot?">
+            <span class="example-icon">🔒</span>
+            <span>SSL-сертификат Let's Encrypt</span>
+          </button>
+          <button class="example-btn" data-prompt="Напиши docker-compose.yml для стека: Nginx + Node.js + PostgreSQL">
+            <span class="example-icon">🐳</span>
+            <span>Docker Compose для веб-стека</span>
+          </button>
+          <button class="example-btn" data-prompt="Как мониторить нагрузку на VPS? CPU, RAM, диск, сеть">
+            <span class="example-icon">📊</span>
+            <span>Мониторинг нагрузки VPS</span>
+          </button>
+          <button class="example-btn" data-prompt="Настрой автоматический бэкап базы PostgreSQL с отправкой в S3">
+            <span class="example-icon">💾</span>
+            <span>Автобэкап PostgreSQL в S3</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status bar -->
+    <div id="status-bar" class="status-bar hidden">
+      <div class="status-bar-inner">
+        <div class="spinner-small"></div>
+        <span id="status-text">Обработка...</span>
+      </div>
+    </div>
+
+    <!-- Input area -->
+    <div class="input-area">
+      <div class="input-wrapper">
+        <textarea
+          id="message-input"
+          class="message-input"
+          placeholder="Задайте вопрос по администрированию сервера..."
+          rows="1"
+          autofocus
+        ></textarea>
+        <button id="btn-send" class="btn-send" title="Отправить (Enter)" disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+      <div class="input-hint">
+        Enter — отправить &nbsp;|&nbsp; Shift+Enter — новая строка
+      </div>
+    </div>
+  </main>
+
+  <!-- Toast notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/public/chat.js"></script>
+</body>
+</html>

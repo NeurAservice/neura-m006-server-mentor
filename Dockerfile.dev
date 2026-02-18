@@ -1,0 +1,21 @@
+# ============================================
+# m006: Server-ментор — Dockerfile (Development)
+# ============================================
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN npm install -g nodemon ts-node
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+# Директории для данных, runtime конфига и логов
+RUN mkdir -p /app/data /app/config /app/logs/app /app/logs/error /app/logs/access /app/logs/frontend
+
+EXPOSE 3066
+
+CMD ["npm", "run", "dev"]
