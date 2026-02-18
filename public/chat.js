@@ -28,9 +28,25 @@ let sidebarCollapsed = false;
 const urlParams = new URLSearchParams(window.location.search);
 const paramUserId = urlParams.get('user_id');
 const paramShellId = urlParams.get('shell');
-const paramExternalUserId = urlParams.get('external_user_id');
-const paramProvider = urlParams.get('provider');
-const paramTenant = urlParams.get('tenant');
+const paramExternalUserId = urlParams.get('external_user_id') || urlParams.get('studentId');
+const paramProvider = urlParams.get('provider') || (urlParams.get('studentId') ? 'prodamus_xl' : null);
+const paramTenant = urlParams.get('tenant') || (urlParams.get('schoolNumber') ? `xl:${urlParams.get('schoolNumber')}` : null);
+
+/**
+ * Определить origin_url для оболочки (Prodamus.XL fallback)
+ */
+function getShellOriginUrl() {
+  const referrer = document.referrer;
+  if (referrer) {
+    try {
+      const referrerUrl = new URL(referrer);
+      if (referrerUrl.hostname.endsWith('.xl.ru') || referrerUrl.hostname === 'xl.ru') {
+        return referrer;
+      }
+    } catch (e) { /* ignore */ }
+  }
+  return window.location.href;
+}
 
 // ============================================
 // Frontend Logger
@@ -552,7 +568,7 @@ async function sendMessage() {
       message,
     };
     if (paramShellId) body.shell_id = paramShellId;
-    if (!paramShellId) body.origin_url = window.location.href;
+    if (!paramShellId) body.origin_url = getShellOriginUrl();
 
     const resp = await fetch('/api/chat/stream', {
       method: 'POST',
@@ -669,7 +685,7 @@ async function fetchBalance() {
   try {
     let url = `/api/balance?user_id=${encodeURIComponent(currentUserId)}`;
     if (paramShellId) url += `&shell_id=${encodeURIComponent(paramShellId)}`;
-    else url += `&origin_url=${encodeURIComponent(window.location.href)}`;
+    else url += `&origin_url=${encodeURIComponent(getShellOriginUrl())}`;
 
     const resp = await fetch(url);
     const data = await resp.json();
