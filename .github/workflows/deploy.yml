@@ -94,6 +94,11 @@ jobs:
 
                   ssh_retry bash -c '
                     cd /opt/neura/m006
+
+                    # Ensure logs directories exist with correct permissions
+                    mkdir -p logs/app logs/error logs/access logs/frontend
+                    chmod -R 777 logs/
+
                     rm -f /tmp/m006-build-exit-code /tmp/m006-build.log
 
                     nohup bash -c "
