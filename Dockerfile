@@ -7,14 +7,14 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm install --omit=dev --maxsockets=5 --fetch-retries=5 --fetch-retry-mintimeout=20000
 
 # Stage 2: Builder
 FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm install --maxsockets=5 --fetch-retries=5 --fetch-retry-mintimeout=20000
 
 COPY . .
 RUN npm run build
