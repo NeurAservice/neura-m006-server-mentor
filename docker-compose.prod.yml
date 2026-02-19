@@ -2,12 +2,15 @@
 # m006: Server-ментор — Docker Compose (Production)
 # ============================================
 # Используется на сервере для деплоя
-# Образ берётся из ghcr.io
+# Собирается локально на сервере
 # ============================================
 
 services:
   m006:
-    image: ghcr.io/neuraservice/neura-m006-server-mentor:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: neura-m006:latest
     container_name: neura-m006
     ports:
       - "3066:3066"

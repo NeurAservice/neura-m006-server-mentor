@@ -6,70 +6,213 @@ on:
     workflow_dispatch:
 
 env:
-    REGISTRY: ghcr.io
-    IMAGE_NAME: neuraservice/neura-m006-server-mentor
+    SSH_OPTS: "-o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5 -o ConnectTimeout=30"
 
 jobs:
-    build-and-push:
-        runs-on: ubuntu-latest
-        permissions:
-            contents: read
-            packages: write
-
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
-
-            - name: Log in to Container Registry
-              uses: docker/login-action@v3
-              with:
-                  registry: ${{ env.REGISTRY }}
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Extract metadata
-              id: meta
-              uses: docker/metadata-action@v5
-              with:
-                  images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-                  tags: |
-                      type=raw,value=latest
-
-            - name: Build and push Docker image
-              uses: docker/build-push-action@v5
-              with:
-                  context: .
-                  push: true
-                  tags: ${{ steps.meta.outputs.tags }}
-                  labels: ${{ steps.meta.outputs.labels }}
-
     deploy:
         runs-on: ubuntu-latest
-        needs: build-and-push
+        timeout-minutes: 30
 
         steps:
-            - name: Deploy to server
-              uses: appleboy/ssh-action@v1.0.3
-              with:
-                  host: ${{ secrets.DEPLOY_HOST }}
-                  username: ${{ secrets.DEPLOY_USER }}
-                  key: ${{ secrets.DEPLOY_SSH_KEY }}
-                  port: ${{ secrets.DEPLOY_SSH_PORT }}
-                  script: |
-                      cd /opt/neura/m006
+            - name: Checkout code
+              uses: actions/checkout@v4
 
-                      # Login to GitHub Container Registry
-                      echo ${{ secrets.CR_PAT }} | docker login ghcr.io -u neuraservice --password-stdin
+            - name: Set up SSH
+              run: |
+                  mkdir -p ~/.ssh
+                  echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_rsa
+                  chmod 600 ~/.ssh/id_rsa
 
-                      # Pull latest image
-                      docker pull ghcr.io/neuraservice/neura-m006-server-mentor:latest
+                  KEYSCAN_OK=0
+                  for attempt in 1 2 3 4 5; do
+                    echo "ssh-keyscan attempt $attempt/5..."
+                    if ssh-keyscan -T 15 -p ${{ secrets.DEPLOY_SSH_PORT }} ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null; then
+                      if [ -s ~/.ssh/known_hosts ]; then
+                        echo "✅ ssh-keyscan succeeded on attempt $attempt"
+                        KEYSCAN_OK=1
+                        break
+                      fi
+                    fi
+                    echo "  ssh-keyscan failed, waiting 15s..."
+                    sleep 15
+                  done
 
-                      # Restart container
-                      docker compose -f docker-compose.prod.yml down
-                      docker compose -f docker-compose.prod.yml up -d
+                  if [ $KEYSCAN_OK -eq 0 ]; then
+                    echo "⚠️ ssh-keyscan failed after 5 attempts, using StrictHostKeyChecking=accept-new"
+                  fi
 
-                      # Cleanup old images
-                      docker image prune -f
+            - name: Update code on server
+              env:
+                  HOST: ${{ secrets.DEPLOY_HOST }}
+                  PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+                  USER: ${{ secrets.DEPLOY_USER }}
+              run: |
+                  ssh_retry() {
+                    local max_attempts=5
+                    local delay=20
+                    for attempt in $(seq 1 $max_attempts); do
+                      echo "  SSH attempt $attempt/$max_attempts..."
+                      if ssh $SSH_OPTS -p $PORT $USER@$HOST "$@"; then
+                        return 0
+                      fi
+                      echo "  SSH failed (attempt $attempt), waiting ${delay}s..."
+                      sleep $delay
+                    done
+                    echo "❌ SSH failed after $max_attempts attempts"
+                    return 1
+                  }
 
-                      # Show status
-                      docker ps | grep neura-m006
+                  ssh_retry bash -c '
+                    if [ ! -d /opt/neura/m006/.git ]; then
+                      echo "⚠️ Git repo not found, cloning..."
+                      git clone https://github.com/NeurAservice/neura-m006-server-mentor.git /opt/neura/m006
+                    fi
+                    cd /opt/neura/m006
+                    git fetch origin main
+                    git reset --hard origin/main
+                    echo "✅ Code updated to $(git log --oneline -1)"
+                  '
+
+            - name: Build and restart container
+              env:
+                  HOST: ${{ secrets.DEPLOY_HOST }}
+                  PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+                  USER: ${{ secrets.DEPLOY_USER }}
+              run: |
+                  ssh_retry() {
+                    local max_attempts=5
+                    local delay=20
+                    for attempt in $(seq 1 $max_attempts); do
+                      if ssh $SSH_OPTS -p $PORT $USER@$HOST "$@" 2>/dev/null; then
+                        return 0
+                      fi
+                      echo "  SSH retry $attempt/$max_attempts, waiting ${delay}s..."
+                      sleep $delay
+                    done
+                    return 1
+                  }
+
+                  ssh_retry bash -c '
+                    cd /opt/neura/m006
+                    rm -f /tmp/m006-build-exit-code /tmp/m006-build.log
+
+                    nohup bash -c "
+                      docker compose -f docker-compose.prod.yml down 2>&1 || true
+
+                      BUILD_SUCCESS=0
+                      for attempt in 1 2 3; do
+                        echo \"Build attempt \$attempt/3...\"
+                        if docker compose -f docker-compose.prod.yml build 2>&1; then
+                          echo \"Build succeeded on attempt \$attempt\"
+                          BUILD_SUCCESS=1
+                          break
+                        else
+                          echo \"Build failed on attempt \$attempt, waiting 30s...\"
+                          sleep 30
+                        fi
+                      done
+
+                      if [ \$BUILD_SUCCESS -eq 0 ]; then
+                        echo \"All build attempts failed!\"
+                        echo 1 > /tmp/m006-build-exit-code
+                        exit 1
+                      fi
+
+                      docker compose -f docker-compose.prod.yml up -d 2>&1
+                      UP_EXIT=\$?
+                      sleep 5
+
+                      if docker ps --filter name=neura-m006 --format \"{{.Names}}\" | grep -q neura-m006; then
+                        echo \"Container is running\"
+                        echo 0 > /tmp/m006-build-exit-code
+                      else
+                        echo \"Container failed to start (compose exit: \$UP_EXIT)\"
+                        docker ps -a --filter name=m006 2>&1
+                        echo \$UP_EXIT > /tmp/m006-build-exit-code
+                      fi
+                    " > /tmp/m006-build.log 2>&1 &
+                    echo \$!
+                  '
+
+                  echo "⏳ Build started, waiting for completion..."
+
+                  for i in $(seq 1 90); do
+                    sleep 10
+                    RESULT=$(ssh $SSH_OPTS -p $PORT $USER@$HOST "cat /tmp/m006-build-exit-code 2>/dev/null || echo RUNNING" 2>/dev/null || echo "SSH_FAIL")
+                    if [ "$RESULT" = "SSH_FAIL" ]; then
+                      echo "  ...SSH poll failed (${i}0s elapsed), retrying..."
+                      continue
+                    fi
+                    if [ "$RESULT" != "RUNNING" ]; then
+                      echo "Build finished with exit code: $RESULT"
+                      if [ "$RESULT" != "0" ]; then
+                        echo "❌ Build failed! Last 100 lines of build log:"
+                        ssh_retry "tail -100 /tmp/m006-build.log" || true
+                        exit 1
+                      fi
+                      break
+                    fi
+                    echo "  ...still building (${i}0s elapsed)"
+                  done
+
+                  FINAL=$(ssh_retry "cat /tmp/m006-build-exit-code 2>/dev/null || echo RUNNING" || echo "SSH_FAIL")
+                  if [ "$FINAL" = "RUNNING" ] || [ "$FINAL" = "SSH_FAIL" ]; then
+                    echo "❌ Build timed out or SSH unavailable after 15 minutes!"
+                    ssh_retry "tail -100 /tmp/m006-build.log" || true
+                    exit 1
+                  fi
+
+            - name: Health check
+              env:
+                  HOST: ${{ secrets.DEPLOY_HOST }}
+                  PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+                  USER: ${{ secrets.DEPLOY_USER }}
+              run: |
+                  ssh_retry() {
+                    local max_attempts=3
+                    local delay=15
+                    for attempt in $(seq 1 $max_attempts); do
+                      if ssh $SSH_OPTS -p $PORT $USER@$HOST "$@" 2>/dev/null; then
+                        return 0
+                      fi
+                      sleep $delay
+                    done
+                    return 1
+                  }
+
+                  echo "⏳ Waiting for container to become healthy..."
+                  sleep 5
+
+                  CONTAINER_STATUS=$(ssh_retry "docker ps --filter name=neura-m006 --format '{{.Status}}'" || true)
+                  echo "Container status: $CONTAINER_STATUS"
+
+                  if [ -z "$CONTAINER_STATUS" ]; then
+                    echo "❌ Container not found!"
+                    ssh_retry "docker ps -a --filter name=m006" || true
+                    ssh_retry "tail -50 /tmp/m006-build.log" || true
+                    exit 1
+                  fi
+
+                  for i in $(seq 1 24); do
+                    sleep 5
+                    HEALTH=$(ssh $SSH_OPTS -p $PORT $USER@$HOST "curl -sf --max-time 5 http://localhost:3066/health 2>&1" 2>/dev/null || true)
+                    if echo "$HEALTH" | grep -q '"status"'; then
+                      echo "✅ Health check passed: $HEALTH"
+                      exit 0
+                    fi
+                    echo "  ...attempt $i/24 — not ready yet"
+                  done
+
+                  echo "❌ Health check failed after 120 seconds!"
+                  ssh_retry "docker logs neura-m006 --tail 50" || true
+                  ssh_retry "docker ps -a --filter name=m006" || true
+                  exit 1
+
+            - name: Cleanup
+              if: always()
+              env:
+                  HOST: ${{ secrets.DEPLOY_HOST }}
+                  PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+                  USER: ${{ secrets.DEPLOY_USER }}
+              run: |
+                  ssh $SSH_OPTS -p $PORT $USER@$HOST "rm -f /tmp/m006-build.log /tmp/m006-build-exit-code" 2>/dev/null || true
