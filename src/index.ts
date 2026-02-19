@@ -22,6 +22,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { cleanupOldConversations } from './services/storage';
 import { clientLogRouter } from './routes/clientLog';
 import { notifyModuleStarted } from './services/telegram';
+import { ChatError, chatService } from './services/chat';
 
 // ============================================
 // m006: Server-ментор — AI-ассистент администрирования VPS
@@ -79,6 +80,33 @@ app.use('/api/chat', chatRouter);
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/analysis', analysisRouter);
 app.use('/api/log', clientLogRouter);
+
+// Balance endpoint (стандарт UI_BALANCE_STANDARD: /api/balance)
+app.get('/api/balance', async (req, res, next) => {
+  const requestId = req.requestId;
+
+  try {
+    const userId = req.query.user_id as string;
+    const shellId = req.query.shell_id as string | undefined;
+    const originUrl = req.query.origin_url as string | undefined;
+
+    if (!userId) {
+      throw new ChatError('MISSING_USER_ID', 'user_id обязателен', 400);
+    }
+
+    const result = await chatService.getBalance(userId, requestId, shellId, originUrl);
+
+    res.json({
+      success: true,
+      balance: result.balance,
+      currency_name: result.currency_name,
+      topup_url: result.topup_url,
+      request_id: requestId,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Serve frontend for root path
 app.get('/', (_req, res) => {

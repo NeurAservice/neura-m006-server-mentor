@@ -22,7 +22,7 @@ const MAX_LOG_BATCH = 50;
 let currentUserId = null;
 let currentSessionId = null;
 let isStreaming = false;
-let sidebarCollapsed = false;
+let sidebarCollapsed = true;
 
 // URL parameters
 const urlParams = new URLSearchParams(window.location.search);
@@ -413,6 +413,10 @@ async function init() {
     await loadConversation(lastSession);
   }
 
+  // Sidebar скрыт по умолчанию
+  $sidebar.classList.add('collapsed');
+  $btnOpenSidebar.classList.remove('hidden');
+
   FrontendLogger.log('info', 'app_init_complete');
 }
 
@@ -781,8 +785,14 @@ async function createNewChat() {
 function toggleSidebar() {
   sidebarCollapsed = !sidebarCollapsed;
   $sidebar.classList.toggle('collapsed', sidebarCollapsed);
+  // Когда сайдбар открыт, скрываем кнопку "Все переписки", когда закрыт — показываем
   $btnOpenSidebar.classList.toggle('hidden', !sidebarCollapsed);
   FrontendLogger.log('info', 'sidebar_toggle', { collapsed: sidebarCollapsed });
+
+  // При открытии сайдбара обновим список бесед
+  if (!sidebarCollapsed) {
+    loadConversations();
+  }
 }
 
 // ============================================

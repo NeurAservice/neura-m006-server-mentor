@@ -346,6 +346,31 @@ body {
 
 .btn-open-sidebar {
   display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  transition: all var(--transition-fast);
+}
+
+.btn-open-sidebar:hover {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.btn-open-sidebar svg {
+  flex-shrink: 0;
+}
+
+.btn-open-sidebar-label {
+  white-space: nowrap;
 }
 
 .hidden {
