@@ -10,11 +10,16 @@
 // Configuration
 // ============================================
 const MODULE_ID = 'm006';
-const API_BASE = '';  // Same origin
-const LOG_ENDPOINT = '/api/log';
+const basePathMatch = window.location.pathname.match(/^\/m\d{3}(?=\/|$)/i);
+const API_BASE = basePathMatch ? basePathMatch[0] : '';
+const LOG_ENDPOINT = `${API_BASE}/api/log`;
 const HEARTBEAT_INTERVAL = 30000;
 const LOG_FLUSH_INTERVAL = 5000;
 const MAX_LOG_BATCH = 50;
+
+function buildApiUrl(path) {
+  return `${API_BASE}${path}`;
+}
 
 // ============================================
 // State
@@ -373,7 +378,7 @@ async function init() {
     FrontendLogger.log('info', 'user_from_param', { userId: currentUserId });
   } else if (paramExternalUserId && paramProvider && paramTenant) {
     try {
-      const resp = await fetch('/api/chat/identity/init', {
+      const resp = await fetch(buildApiUrl('/api/chat/identity/init'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -427,7 +432,7 @@ async function loadConversations() {
   FrontendLogger.log('info', 'load_conversations_start');
 
   try {
-    const resp = await fetch(`/api/conversations?user_id=${encodeURIComponent(currentUserId)}`);
+    const resp = await fetch(buildApiUrl(`/api/conversations?user_id=${encodeURIComponent(currentUserId)}`));
     const data = await resp.json();
 
     if (!data.success) {
@@ -469,7 +474,7 @@ window.loadConversation = async function (sessionId) {
   FrontendLogger.log('info', 'load_conversation', { sessionId });
 
   try {
-    const resp = await fetch(`/api/conversations/${sessionId}?user_id=${encodeURIComponent(currentUserId)}`);
+    const resp = await fetch(buildApiUrl(`/api/conversations/${sessionId}?user_id=${encodeURIComponent(currentUserId)}`));
     const data = await resp.json();
 
     if (!data.success) {
@@ -530,7 +535,7 @@ async function sendMessage() {
   // Create session if needed
   if (!currentSessionId) {
     try {
-      const resp = await fetch('/api/chat/new', {
+      const resp = await fetch(buildApiUrl('/api/chat/new'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: currentUserId }),
@@ -574,7 +579,7 @@ async function sendMessage() {
     if (paramShellId) body.shell_id = paramShellId;
     if (!paramShellId) body.origin_url = getShellOriginUrl();
 
-    const resp = await fetch('/api/chat/stream', {
+    const resp = await fetch(buildApiUrl('/api/chat/stream'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -687,7 +692,7 @@ async function fetchBalance() {
   $balanceError.classList.add('hidden');
 
   try {
-    let url = `/api/balance?user_id=${encodeURIComponent(currentUserId)}`;
+    let url = buildApiUrl(`/api/balance?user_id=${encodeURIComponent(currentUserId)}`);
     if (paramShellId) url += `&shell_id=${encodeURIComponent(paramShellId)}`;
     else url += `&origin_url=${encodeURIComponent(getShellOriginUrl())}`;
 
@@ -739,7 +744,7 @@ async function downloadConversation() {
   FrontendLogger.log('info', 'download_start', { sessionId: currentSessionId });
 
   try {
-    const url = `/api/conversations/${currentSessionId}/download?user_id=${encodeURIComponent(currentUserId)}`;
+    const url = buildApiUrl(`/api/conversations/${currentSessionId}/download?user_id=${encodeURIComponent(currentUserId)}`);
     const resp = await fetch(url);
 
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);

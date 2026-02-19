@@ -29,6 +29,7 @@ import { ChatError, chatService } from './services/chat';
 // ============================================
 
 const app: Application = express();
+const MODULE_PREFIX = '/m006';
 
 // Security middleware
 app.use(helmet({
@@ -68,9 +69,14 @@ app.use(requestLogger);
 // Serve static files (frontend)
 app.use('/public', express.static(path.join(__dirname, '../public')));
 app.use('/assets', express.static(path.join(__dirname, '../public/assets')));
+app.use(`${MODULE_PREFIX}/public`, express.static(path.join(__dirname, '../public')));
+app.use(`${MODULE_PREFIX}/assets`, express.static(path.join(__dirname, '../public/assets')));
 
 // Favicon
 app.get('/favicon.ico', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/favicon.ico'));
+});
+app.get(`${MODULE_PREFIX}/favicon.ico`, (_req, res) => {
   res.sendFile(path.join(__dirname, '../public/favicon.ico'));
 });
 
@@ -80,6 +86,11 @@ app.use('/api/chat', chatRouter);
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/analysis', analysisRouter);
 app.use('/api/log', clientLogRouter);
+app.use(`${MODULE_PREFIX}/health`, healthRouter);
+app.use(`${MODULE_PREFIX}/api/chat`, chatRouter);
+app.use(`${MODULE_PREFIX}/api/conversations`, conversationsRouter);
+app.use(`${MODULE_PREFIX}/api/analysis`, analysisRouter);
+app.use(`${MODULE_PREFIX}/api/log`, clientLogRouter);
 
 // Balance endpoint (стандарт UI_BALANCE_STANDARD: /api/balance)
 app.get('/api/balance', async (req, res, next) => {
@@ -107,9 +118,37 @@ app.get('/api/balance', async (req, res, next) => {
     next(error);
   }
 });
+app.get(`${MODULE_PREFIX}/api/balance`, async (req, res, next) => {
+  const requestId = req.requestId;
+
+  try {
+    const userId = req.query.user_id as string;
+    const shellId = req.query.shell_id as string | undefined;
+    const originUrl = req.query.origin_url as string | undefined;
+
+    if (!userId) {
+      throw new ChatError('MISSING_USER_ID', 'user_id обязателен', 400);
+    }
+
+    const result = await chatService.getBalance(userId, requestId, shellId, originUrl);
+
+    res.json({
+      success: true,
+      balance: result.balance,
+      currency_name: result.currency_name,
+      topup_url: result.topup_url,
+      request_id: requestId,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Serve frontend for root path
 app.get('/', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+app.get([MODULE_PREFIX, `${MODULE_PREFIX}/`], (_req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
