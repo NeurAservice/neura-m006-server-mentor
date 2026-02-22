@@ -6,6 +6,7 @@
  * @affects AI-генерация ответов, токены, биллинг
  */
 
+import crypto from 'crypto';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
@@ -27,6 +28,7 @@ export interface OpenAIStreamEvent {
   content?: string;
   usage?: OpenAIUsage;
   model?: string;
+  responseId?: string;
   errorMessage?: string;
   errorCode?: string;
   status?: string;
@@ -59,10 +61,16 @@ export class OpenAIError extends Error {
 
 /**
  * Отправить запрос к OpenAI Responses API с SSE-streaming
+ * @param messages Сообщения для отправки (только последнее при multi-turn)
+ * @param requestId ID запроса для трейсинга
+ * @param previousResponseId ID предыдущего response для multi-turn
+ * @param userId ID пользователя для safety_identifier
  */
 export async function* streamChatCompletion(
   messages: ConversationMessage[],
-  requestId: string
+  requestId: string,
+  previousResponseId?: string,
+  userId?: string
 ): AsyncGenerator<OpenAIStreamEvent> {
   const startTime = Date.now();
 
@@ -82,6 +90,7 @@ export async function* streamChatCompletion(
       }));
 
       const body: Record<string, unknown> = {
+        store: true,
         input,
         stream: true,
       };
@@ -94,10 +103,27 @@ export async function* streamChatCompletion(
         body.instructions = 'Ты — опытный системный администратор Linux/Unix серверов. Помогаешь с настройкой VPS, DNS, Docker, Nginx, firewall, SSL-сертификатов, мониторинга, безопасности и автоматизации. Отвечай чётко, с примерами команд. Предупреждай об опасных операциях.';
       }
 
+      // Multi-turn: previous_response_id для экономии токенов ~80-90%
+      if (previousResponseId) {
+        body.previous_response_id = previousResponseId;
+      }
+
+      // Safety: hashed user_id + prompt cache
+      if (userId) {
+        const hashedUserId = crypto
+          .createHash('sha256')
+          .update(userId)
+          .digest('hex')
+          .substring(0, 32);
+        body.safety_identifier = hashedUserId;
+        body.prompt_cache_key = `${config.moduleId}:${hashedUserId}`;
+      }
+
       logger.info('OpenAI Responses API request', {
         requestId,
-        model: config.openai.model,
+        model: config.openai.promptId ? '(from prompt)' : config.openai.model,
         promptId: config.openai.promptId || '(none)',
+        previousResponseId: previousResponseId || '(first message)',
         messageCount: messages.length,
         retryCount,
       });
@@ -166,6 +192,7 @@ export async function* streamChatCompletion(
       let fullContent = '';
       let finalUsage: OpenAIUsage | undefined;
       let finalModel: string | undefined;
+      let responseId = '';
       let firstDeltaReceived = false;
 
       while (true) {
@@ -188,7 +215,12 @@ export async function* streamChatCompletion(
               const parsed = JSON.parse(data);
               const eventType = parsed.type;
 
-              if (eventType === 'response.output_text.delta') {
+              if (eventType === 'response.created') {
+                responseId = parsed.response?.id || '';
+                yield { type: 'status', status: 'Модель начала обработку запроса...', progress: 25 };
+              } else if (eventType === 'response.in_progress') {
+                yield { type: 'status', status: 'Модель формирует ответ...', progress: 30 };
+              } else if (eventType === 'response.output_text.delta') {
                 const delta = parsed.delta || '';
                 if (delta) {
                   if (!firstDeltaReceived) {
@@ -210,6 +242,7 @@ export async function* streamChatCompletion(
                   };
                 }
                 finalModel = resp?.model;
+                if (resp?.id) responseId = resp.id;
               } else if (eventType === 'error') {
                 const errorMsg = parsed.error?.message || 'Unknown error';
                 logger.error('OpenAI stream error event', { requestId, error: errorMsg });
@@ -229,6 +262,7 @@ export async function* streamChatCompletion(
 
       logger.info('OpenAI stream completed', {
         requestId,
+        responseId,
         model: finalModel || config.openai.model,
         input_tokens: finalUsage?.input_tokens || 0,
         output_tokens: finalUsage?.output_tokens || 0,
@@ -240,6 +274,7 @@ export async function* streamChatCompletion(
         type: 'done',
         content: fullContent,
         usage: finalUsage,
+        responseId,
         model: finalModel || config.openai.model,
       };
 

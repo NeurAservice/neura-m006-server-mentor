@@ -27,7 +27,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - ANALYSIS_MODEL=${ANALYSIS_MODEL:-o4-mini}
       - ANALYSIS_ENABLED=${ANALYSIS_ENABLED:-false}
-      - ANALYSIS_CRON=${ANALYSIS_CRON:-0 4 * * *}
+      - ANALYSIS_CRON=${ANALYSIS_CRON:-0 5 * * *}
       - ADMIN_BOT_TOKEN=${ADMIN_BOT_TOKEN:-}
       - ADMIN_CHAT_ID=${ADMIN_CHAT_ID:-}
     volumes:

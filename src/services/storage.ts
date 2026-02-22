@@ -27,6 +27,7 @@ interface ConversationMessage {
   content: string;
   timestamp: string;
   attachments?: MessageAttachment[];
+  openaiResponseId?: string;
 }
 
 interface Conversation {
@@ -141,7 +142,8 @@ class StorageService {
     sessionId: string,
     role: 'user' | 'assistant',
     content: string,
-    attachments?: MessageAttachment[]
+    attachments?: MessageAttachment[],
+    openaiResponseId?: string
   ): Promise<void> {
     let conversation = await this.getConversation(userId, sessionId);
 
@@ -154,6 +156,7 @@ class StorageService {
       content,
       timestamp: new Date().toISOString(),
       attachments,
+      openaiResponseId,
     };
 
     conversation.messages.push(message);
@@ -210,6 +213,24 @@ class StorageService {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Получить последний openaiResponseId для multi-turn (экономия токенов ~80-90%)
+   */
+  async getLastResponseId(userId: string, sessionId: string): Promise<string | null> {
+    const conversation = await this.getConversation(userId, sessionId);
+    if (!conversation) return null;
+
+    // Ищем последнее сообщение assistant с openaiResponseId
+    for (let i = conversation.messages.length - 1; i >= 0; i--) {
+      const msg = conversation.messages[i];
+      if (msg.role === 'assistant' && msg.openaiResponseId) {
+        return msg.openaiResponseId;
+      }
+    }
+
+    return null;
   }
 
   /**

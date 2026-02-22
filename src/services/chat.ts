@@ -52,6 +52,7 @@ interface StreamEvent {
   delta?: string;
   content?: string;
   usage?: OpenAIUsage;
+  responseId?: string;
   errorMessage?: string;
   errorCode?: string;
 }
@@ -129,33 +130,42 @@ class ChatService {
 
     yield { type: 'status', status: 'Загружаем историю беседы...', progress: 10 };
 
-    // 2. Сохранить сообщение пользователя
-    await storageService.addMessage(userId, sessionId, 'user', message);
-
-    // 3. Получить историю для AI
-    const history = await storageService.getMessagesForAI(userId, sessionId);
-
-    // Если есть контекст (первое сообщение) — инжектить в системное сообщение
-    const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
-    if (context && Object.keys(context).length > 0) {
-      const contextLines = Object.entries(context)
+    // 2. Подготовка сообщения пользователя
+    // Инжектируем контекст в текст первого сообщения (как в шаблоне)
+    let finalMessage = message;
+    const conversation = await storageService.getConversation(userId, sessionId);
+    if (conversation && conversation.messages.length === 0 && context && Object.keys(context).length > 0) {
+      const contextParts = Object.entries(context)
         .map(([key, value]) => `${key}: ${value}`)
-        .join('\n');
-      messages.push({
-        role: 'system' as const,
-        content: `Контекст пользователя:\n${contextLines}`,
+        .join(', ');
+      finalMessage = `${message}\n\n${contextParts}`;
+
+      logger.info('Context injected into first message', {
+        requestId, userId, sessionId,
+        contextFields: Object.keys(context),
       });
     }
-    messages.push(...history);
 
-    // 4. Запрос к OpenAI (streaming)
+    // Сохранить сообщение пользователя
+    await storageService.addMessage(userId, sessionId, 'user', finalMessage);
+
+    // 3. Multi-turn: получить previous_response_id (экономия токенов ~80-90%)
+    const lastResponseId = await storageService.getLastResponseId(userId, sessionId);
+
+    // 4. Отправляем только последнее сообщение (контекст через previous_response_id)
+    const openaiInput: Array<{ role: 'user' | 'assistant'; content: string }> = [
+      { role: 'user', content: finalMessage },
+    ];
+
+    // 5. Запрос к OpenAI (streaming)
     let finalContent = '';
     let finalUsage: OpenAIUsage | undefined;
     let finalModel: string | undefined;
+    let finalResponseId: string | undefined;
     let aiSucceeded = false;
 
     try {
-      for await (const event of streamChatCompletion(messages, requestId)) {
+      for await (const event of streamChatCompletion(openaiInput, requestId, lastResponseId || undefined, userId)) {
         if (event.type === 'text_delta') {
           yield { type: 'text_delta', delta: event.delta };
         } else if (event.type === 'status') {
@@ -164,6 +174,7 @@ class ChatService {
           finalContent = event.content || '';
           finalUsage = event.usage;
           finalModel = event.model;
+          finalResponseId = event.responseId;
           aiSucceeded = true;
         } else if (event.type === 'error') {
           yield { type: 'error', errorMessage: event.errorMessage, errorCode: event.errorCode };
@@ -209,9 +220,9 @@ class ChatService {
       return;
     }
 
-    // 5. Сохранить ответ ассистента
+    // 6. Сохранить ответ ассистента (с openaiResponseId для multi-turn)
     if (aiSucceeded && finalContent) {
-      await storageService.addMessage(userId, sessionId, 'assistant', finalContent);
+      await storageService.addMessage(userId, sessionId, 'assistant', finalContent, undefined, finalResponseId);
     }
 
     // 6. Billing finish (commit)
@@ -255,6 +266,7 @@ class ChatService {
       userId,
       duration_ms: totalDuration,
       model: finalModel,
+      responseId: finalResponseId,
       input_tokens: finalUsage?.input_tokens,
       output_tokens: finalUsage?.output_tokens,
       content_length: finalContent.length,
@@ -264,6 +276,7 @@ class ChatService {
       type: 'done',
       content: finalContent,
       usage: finalUsage,
+      responseId: finalResponseId,
     };
   }
 

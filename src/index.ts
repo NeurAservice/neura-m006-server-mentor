@@ -22,6 +22,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { cleanupOldConversations } from './services/storage';
 import { clientLogRouter } from './routes/clientLog';
 import { notifyModuleStarted } from './services/telegram';
+import { analysisService } from './services/analysis';
 import { ChatError, chatService } from './services/chat';
 
 // ============================================
@@ -171,6 +172,20 @@ cron.schedule('0 3 * * *', async () => {
     logger.error('Cleanup failed', { error: (error as Error).message });
   }
 });
+
+// Автоанализ бесед: расписание разнесено по модулям —
+// m001=03:00, m005=04:00, m006=05:00 UTC (1-часовой интервал).
+if (config.analysis.enabled) {
+  cron.schedule(config.analysis.cronSchedule, async () => {
+    logger.info('Scheduled analysis triggered', {
+      cronSchedule: config.analysis.cronSchedule,
+    });
+    await analysisService.runAllAnalyses();
+  });
+  logger.info(`Analysis cron scheduled: ${config.analysis.cronSchedule}`);
+} else {
+  logger.info('Analysis is disabled via ANALYSIS_ENABLED=false');
+}
 
 // Validate configuration
 const configValidation = validateConfig();

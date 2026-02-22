@@ -100,7 +100,7 @@ export const config = {
   analysis: {
     model: process.env.ANALYSIS_MODEL || 'o4-mini',
     enabled: process.env.ANALYSIS_ENABLED !== 'false',
-    cronSchedule: process.env.ANALYSIS_CRON || '0 4 * * *',
+    cronSchedule: process.env.ANALYSIS_CRON || '0 5 * * *', // 05:00 UTC — стагнация: m001=03:00, m005=04:00, m006=05:00
   },
 
   // Admin Telegram Bot (уведомления администратору)
