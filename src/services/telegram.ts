@@ -139,7 +139,7 @@ export async function notifyAdmin(
  */
 export async function notifyModuleStarted(): Promise<void> {
   const text = [
-    `🟢 *m006 Server-ментор* запущен`,
+    `🟢 *#m006 Server-ментор* запущен`,
     `Env: ${config.nodeEnv}`,
     `Port: ${config.port}`,
     `Time: ${new Date().toISOString()}`,
@@ -153,7 +153,7 @@ export async function notifyModuleStarted(): Promise<void> {
  */
 export async function notifyCriticalError(error: Error, context?: string): Promise<void> {
   const text = [
-    `🔴 *m006 Server-ментор* — критическая ошибка`,
+    `🔴 *#m006 Server-ментор* — критическая ошибка`,
     context ? `Context: ${context}` : '',
     `Error: \`${error.message}\``,
     `Time: ${new Date().toISOString()}`,

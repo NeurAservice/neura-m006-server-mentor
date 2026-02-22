@@ -612,7 +612,7 @@ message_indices — индексы сообщений (с 0), где прояв�
       low: result.errors.filter(e => e.severity === 'low').length,
     };
 
-    let caption = `<b>📊 ${config.moduleId.toUpperCase()} | ${config.moduleName}</b>\n`;
+    let caption = `<b>📊 #${config.moduleId} | ${config.moduleName}</b>\n`;
     caption += `<b>Автоанализ бесед — поиск ошибок</b>\n\n`;
     caption += `📋 Бесед проанализировано: <b>${result.analyzed_conversations}</b>\n`;
     caption += `🔍 Ошибок найдено: <b>${result.total_errors_found}</b>\n`;
@@ -749,7 +749,7 @@ message_indices — индексы сообщений (с 0), где прояв�
 
         if (telegramService.isConfigured()) {
           const msg =
-            `<b>📊 ${config.moduleId.toUpperCase()} | ${config.moduleName}</b>\n` +
+            `<b>📊 #${config.moduleId} | ${config.moduleName}</b>\n` +
             `<b>Автоанализ бесед</b>\n\n` +
             `За последние сутки новых бесед не обнаружено.\n` +
             `Анализ не требуется.`;
@@ -867,7 +867,7 @@ message_indices — индексы сообщений (с 0), где прояв�
 
       if (telegramService.isConfigured()) {
         const errorMsg =
-          `<b>⚠️ ${config.moduleId.toUpperCase()} | ${config.moduleName}</b>\n` +
+          `<b>⚠️ #${config.moduleId} | ${config.moduleName}</b>\n` +
           `<b>Ошибка автоанализа бесед</b>\n\n` +
           `Ошибка: <code>${(error as Error).message}</code>\n` +
           `Время: ${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}`;
